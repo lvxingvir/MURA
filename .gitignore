@@ -1,0 +1,6 @@
+#folder
+/.idea
+/.ipynb_checkpoints
+
+#files
+*.pyc

@@ -356,8 +356,11 @@ def resnet101(pretrained=False, **kwargs):
     return model
 
 
-GLOBAL_BRANCH_DIR = '/data1/wurundi/ML/state_dicts/resnet50_b16_state_dict.pth.tar'
-LOCAL_BRANCH_DIR = '/data1/wurundi/ML/state_dicts/resnet50_b16_state_dict.pth.tar'
+# GLOBAL_BRANCH_DIR = '/data1/wurundi/ML/state_dicts/resnet50_b16_state_dict.pth.tar'
+# LOCAL_BRANCH_DIR = '/data1/wurundi/ML/state_dicts/resnet50_b16_state_dict.pth.tar'
+
+GLOBAL_BRANCH_DIR = r'E:\Xing\MURA\baseline_resnet50\model\best_model.pth.tar'
+LOCAL_BRANCH_DIR = r'E:\Xing\MURA\baseline_resnet50\model\best_model.pth.tar'
 
 
 # attention guided CNN using resnet50 as backbone

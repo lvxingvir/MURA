@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import warnings
 from common import config
+from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
 
@@ -23,7 +24,7 @@ class MURA_Dataset(Dataset):
         :param transform: the transforms exptected to be applied to the data
         """
         self.data_dir = data_dir
-        self.frame = pd.read_csv(os.path.join(data_dir, csv_file), header=None)
+        self.frame = pd.read_csv(os.path.join(data_dir, csv_file))
         self.transform = transform
 
     def _parse_patient(self, img_filename):
@@ -58,7 +59,8 @@ class MURA_Dataset(Dataset):
         return len(self.frame)
 
     def __getitem__(self, idx):
-        img_filename = self.frame.iloc[idx, 0]
+        img_filename = self.frame.iloc[idx, 1]
+        # print(idx,img_filename)
         patient = self._parse_patient(img_filename)
         study = self._parse_study(img_filename)
         image_num = self._parse_image(img_filename)
@@ -66,7 +68,8 @@ class MURA_Dataset(Dataset):
 
         file_path = os.path.join(self.data_dir, img_filename)
         image = Image.open(file_path).convert('RGB')
-        label = self.frame.iloc[idx, 1]
+        label = self.frame.iloc[idx, 2]
+        label = int(label)
 
         meta_data = {
             'y_true': label,
@@ -115,7 +118,7 @@ def get_dataloaders(name, batch_size, shuffle, num_workers=32, data_dir=config.d
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]),
     }
-    image_dataset = MURA_Dataset(data_dir=data_dir, csv_file='MURA-v1.0/%s.csv' % name,
+    image_dataset = MURA_Dataset(data_dir=data_dir, csv_file='MURA-v1.1/%s.csv' % name,
                                  transform=data_transforms[name])
     dataloader = DataLoader(image_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
@@ -126,7 +129,7 @@ def calc_data_weights():
     """
     :return: the weights of positive and negative data of each type of study
     """
-    frame = pd.read_csv('/data1/wurundi/ML/data/MURA-v1.0/train.csv', header=None)
+    frame = pd.read_csv(r'E:\Xing\MURA\MURA-v1.1\\train.csv')
     n_t = {t: 0 for t in config.study_type}
     a_t = {t: 0 for t in config.study_type}
     w_t0 = {t: 0.0 for t in config.study_type}
@@ -135,10 +138,11 @@ def calc_data_weights():
     study_type_re = re.compile(r'XR_(\w+)')
 
     for idx in range(len(frame)):
-        img_filename = frame.iloc[idx, 0]
+        img_filename = frame.iloc[idx, 1]
         study_type = study_type_re.search(img_filename).group(1)
 
-        label = frame.iloc[idx, 1]
+        label = frame.iloc[idx, 2]
+        label = int(label)
         if label == 1:
             a_t[study_type] += 1
         else:
@@ -149,3 +153,27 @@ def calc_data_weights():
         w_t1[t] = n_t[t] / (a_t[t] + n_t[t])
 
     return [w_t0, w_t1]
+
+
+if __name__ == "__main__":
+
+    LOSS_WEIGHTS = calc_data_weights()
+
+    train_loader = get_dataloaders('train', batch_size=1,
+                                   shuffle=False)
+
+    valid_loader = get_dataloaders('valid', batch_size=1,
+                                   shuffle=False)
+
+    for i, data in enumerate(tqdm(train_loader)):
+        # print(data['meta_data']['img_filename'])
+        inputs = data['image']
+        labels = data['label']
+        study_type = data['meta_data']['study_type']
+        file_paths = data['meta_data']['file_path']
+        inputs = inputs.to(config.device)
+        labels = labels.to(config.device)
+
+        weights = [LOSS_WEIGHTS[labels[i]][study_type[i]] for i in range(inputs.size(0))]
+
+        # print(weights)

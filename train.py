@@ -57,6 +57,8 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
     for i, data in enumerate(pbar):
         inputs = data['image']
         labels = data['label']
+        # labels = np.asarray(labels,np.float32)
+        # labels = torch.Tensor(labels)
         study_type = data['meta_data']['study_type']
         file_paths = data['meta_data']['file_path']
         inputs = inputs.to(config.device)
@@ -69,8 +71,8 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         preds = (outputs.data > 0.5).type(torch.cuda.FloatTensor)
 
         # update loss metric
-        loss = F.binary_cross_entropy(outputs, labels.float(), weights)
-        # loss = criterion(outputs, labels)
+        # loss = F.binary_cross_entropy(outputs, labels.float(), weights)
+        loss = criterion(outputs, labels.float())
         losses.update(loss.item(), inputs.size(0))
 
         corrects = torch.sum(preds.view_as(labels) == labels.float().data)
@@ -200,6 +202,9 @@ def main():
     parser.add_argument('--net', default='densenet169', type=str, required=False)
     parser.add_argument('--local', action='store_true', help='train local branch')
     args = parser.parse_args()
+    args.batch_size = 32
+    args.epochs = 150
+    args.net = 'fusenet'
     print(args)
 
     config.exp_name = args.exp_name
@@ -228,11 +233,16 @@ def main():
     sess = Session(config, net=net)
 
     # get dataloader
-    train_loader = get_dataloaders('train', batch_size=args.batch_size,
-                                   shuffle=True, is_local=args.local)
+    # train_loader = get_dataloaders('train', batch_size=args.batch_size,
+    #                                shuffle=True, is_local=args.local)
+    #
+    # valid_loader = get_dataloaders('valid', batch_size=args.batch_size,
+    #                                shuffle=False, is_local=args.local)
+    train_loader = get_dataloaders('train', batch_size=args.batch_size,num_workers=4,
+                                   shuffle=True)
 
     valid_loader = get_dataloaders('valid', batch_size=args.batch_size,
-                                   shuffle=False, is_local=args.local)
+                                   shuffle=False)
 
     if args.continue_path and os.path.exists(args.continue_path):
         sess.load_checkpoint(args.continue_path)

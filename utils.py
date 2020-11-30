@@ -41,6 +41,13 @@ def save_args(args, save_dir):
     with open(param_path, 'w') as fp:
         json.dump(args.__dict__, fp, indent=4, sort_keys=True)
 
+def calculate_accuracy(outputs, targets):
+    outputs = outputs.data.cpu().numpy().flatten()
+    targets = targets.data.cpu().numpy().flatten()
+    hit = ((outputs > 0.5) == targets).sum()
+    sum = targets.shape[0]
+    return (hit + 1e-8) / (sum + 1e-8)
+
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -170,3 +177,5 @@ class AUCMeter():
         plt.ylabel('True Positive Rate')
         plt.xlabel('False Positive Rate')
         plt.savefig(savepath)
+
+
