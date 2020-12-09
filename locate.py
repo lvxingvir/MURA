@@ -7,6 +7,7 @@ import argparse
 from PIL import Image
 from common import config
 
+
 Trans = transforms.Compose([
         transforms.Resize((256, 256)),
         transforms.CenterCrop(224),
@@ -43,8 +44,11 @@ def generate_grad_cam(net, ori_image):
         nonlocal gradient
         gradient = grad_out[0].data.cpu().numpy()
 
-    net.module.layer4.register_forward_hook(func_f)
-    net.module.layer4.register_backward_hook(func_b)
+    # net.module.layer4.register_forward_hook(func_f)
+    # net.module.layer4.register_backward_hook(func_b)
+
+    net.layer4.register_forward_hook(func_f)
+    net.layer4.register_backward_hook(func_b)
 
     out = net(input_image.unsqueeze(0))
 
@@ -188,7 +192,21 @@ if __name__ == '__main__':
     parser.add_argument('--img_path', type=str, required=False, help='filepath of query input')
     args = parser.parse_args()
 
-    net = torch.load(args.model_path)['net']
+    model_load_path = r'E:\Xing\MURA\baseline_resnet50\model'
+    model_name = r'\best_model.pth.tar'
+    continue_path = model_load_path + model_name
+
+    args.model_path = continue_path
+    args.img_path = r'E:\Xing\MURA\MURA-v1.1\train\XR_ELBOW\patient00016\study1_positive\image1.png'
+
+    from model import densenet169, resnet50, resnet101, fusenet, \
+        GLOBAL_BRANCH_DIR, LOCAL_BRANCH_DIR
+
+    net = resnet50()
+
+    checkp = torch.load(args.model_path)
+
+    net.load_state_dict(checkp['net'])
 
     ori_image = Image.open(args.img_path).convert('RGB')
     cam_feature = generate_grad_cam(net, ori_image)
