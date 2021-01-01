@@ -16,6 +16,11 @@ from common import config
 from utils import TrainClock, save_args, AverageMeter, AUCMeter
 from dataset import get_dataloaders
 from dataset import calc_data_weights
+from lr_cosine import CosineAnnealingWarmUpRestarts
+
+from Attention_Resnet.model.residual_attention_network_mura import ResidualAttentionModel_92 as Attentionnet
+from efficientunet import *
+
 
 torch.backends.cudnn.benchmark = True
 LOSS_WEIGHTS = calc_data_weights()
@@ -64,15 +69,15 @@ def train_model(train_loader, model, criterion, optimizer, epoch):
         inputs = inputs.to(config.device)
         labels = labels.to(config.device)
 
-        # weights = [LOSS_WEIGHTS[labels[i]][study_type[i]] for i in range(inputs.size(0))]
-        # weights = torch.Tensor(weights).view_as(labels).to(config.device)
+        weights = [LOSS_WEIGHTS[labels[i]][study_type[i]] for i in range(inputs.size(0))]
+        weights = torch.Tensor(weights).view_as(labels).to(config.device)
 
         outputs = model(inputs)
         preds = (outputs.data > 0.5).type(torch.cuda.FloatTensor)
 
         # update loss metric
-        # loss = F.binary_cross_entropy(outputs, labels.float(), weights)
-        loss = criterion(outputs, labels.float())
+        loss = F.binary_cross_entropy(outputs, labels.float(), weights)
+        # loss = criterion(outputs, labels.float())
         losses.update(loss.item(), inputs.size(0))
 
         corrects = torch.sum(preds.view_as(labels) == labels.float().data)
@@ -202,9 +207,10 @@ def main():
     parser.add_argument('--net', default='densenet169', type=str, required=False)
     parser.add_argument('--local', action='store_true', help='train local branch')
     args = parser.parse_args()
-    args.batch_size = 32
-    args.epochs = 150
-    args.net = 'densenet169'
+    args.batch_size = 16
+    args.epochs = 120
+    args.lr=1e-3
+    args.net = 'resnet101'
     print(args)
 
     config.exp_name = args.exp_name
@@ -226,6 +232,14 @@ def main():
         local_branch = torch.load(LOCAL_BRANCH_DIR)['net']
         net = fusenet(global_branch, local_branch)
         del global_branch, local_branch
+    elif args.net == 'attention_resnet':
+        net = Attentionnet()
+    elif args.net == 'effnet-b3':
+        net = EfficientNet.from_name('efficientnet-b3', n_classes=1, pretrained=False)
+    elif args.net == 'effnet-b5':
+        net = EfficientNet.from_name('efficientnet-b5', n_classes=1, pretrained=False)
+    elif args.net == 'effnet-b7':
+        net = EfficientNet.from_name('efficientnet-b7', n_classes=1, pretrained=False)
     else:
         raise NameError
 
@@ -260,10 +274,15 @@ def main():
     else:
         optimizer = optim.Adam(sess.net.parameters(), args.lr)
 
-    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.1,  patience=10, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, 'max', factor=0.5,  patience=6, verbose=True)
+    # scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=10, T_mult=2, eta_max=1e-2, T_up=2, gamma=0.7)
 
     # start training
     for e in range(args.epochs):
+
+        for para in optimizer.param_groups:
+            print('LR',para['lr'])
+
         train_out = train_model(train_loader, sess.net,
                                 criterion, optimizer, clock.epoch)
         valid_out = valid_model(valid_loader, sess.net,
@@ -279,9 +298,13 @@ def main():
 
         tb_writer.add_scalar('learning_rate', optimizer.param_groups[-1]['lr'], clock.epoch)
         scheduler.step(valid_out['epoch_auc'])
+        # scheduler.step()
 
-        if valid_out['epoch_auc'] > sess.best_val_acc:
-            sess.best_val_acc = valid_out['epoch_auc']
+
+        if valid_out['epoch_acc'] > sess.best_val_acc:
+
+            sess.best_val_acc = valid_out['epoch_acc']
+            print('best_acc:',sess.best_val_acc,'_@_',e)
             sess.save_checkpoint('best_model.pth.tar')
 
         if clock.epoch % 10 == 0:
